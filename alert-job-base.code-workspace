@@ -1,0 +1,17 @@
+{
+  "folders": [
+    { "name": "base", "path": "." },
+    { "name": "common", "path": "../alert-job-common" },
+    { "name": "core", "path": "../alert-job-core" },
+    { "name": "parser", "path": "../alert-job-parser" },
+    { "name": "notification", "path": "../alert-job-notification" },
+    { "name": "llm", "path": "../alert-job-llm" },
+    { "name": "gateway", "path": "../alert-job-gateway" },
+    { "name": "config", "path": "../alert-job-config" },
+    { "name": "front", "path": "../alert-job-front" },
+    { "name": "deploy", "path": "../alert-job-deploy" }
+  ],
+  "settings": {
+    "java.configuration.updateBuildConfiguration": "automatic"
+  }
+}

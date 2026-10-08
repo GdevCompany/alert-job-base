@@ -1,0 +1,8 @@
+---
+description: Meta и Maven parent — alert-job-base
+alwaysApply: true
+---
+
+# alert-job-base
+
+Maven parent POM (`artifactId` alert-job-parent) in `pom.xml`. Infra configs in `config/` for deploy compose volumes. No application Java sources. No docker-compose — use sibling `alert-job-deploy`.

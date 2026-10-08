@@ -1,0 +1,25 @@
+# Соседние клоны (ORG = gdevby). Папка $base — общий родитель для всех репо.
+$base = "D:\TEMP\projects\gdev"
+$org = "https://github.com/gdevby"
+$repos = @(
+  "alert-job-base",
+  "alert-job-common",
+  "alert-job-core",
+  "alert-job-parser",
+  "alert-job-notification",
+  "alert-job-llm",
+  "alert-job-gateway",
+  "alert-job-config",
+  "alert-job-config-repo",
+  "alert-job-front",
+  "alert-job-deploy"
+)
+foreach ($r in $repos) {
+  $path = Join-Path $base $r
+  if (-not (Test-Path $path)) {
+    git clone "$org/$r.git" $path
+  }
+}
+Write-Host "Workspace: $base\alert-job-base\alert-job-base.code-workspace"
+Write-Host "Compose:   cd $base\alert-job-deploy && docker compose up"
+Write-Host "Legacy monorepo: $org/alert-job.git"

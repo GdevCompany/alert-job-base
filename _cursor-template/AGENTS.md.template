@@ -1,0 +1,5 @@
+# AGENTS.md — {{REPO_NAME}}
+
+{{ONE_LINE_DESCRIPTION}} Meta: `../alert-job-base`. Правила: `.cursor/rules/`.
+
+Сборка Java: `cd ../alert-job-base && mvn -N install` → `../alert-job-common` → `mvn package` в этом репо.

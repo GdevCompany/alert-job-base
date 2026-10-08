@@ -1,0 +1,18 @@
+# Maven parent (no jar, but flatten/local build)
+target/
+.flattened-pom.xml
+
+# IDE
+.idea/
+*.iml
+.classpath
+.project
+.settings
+
+# secrets
+.env
+
+# local / misc
+hs_err_pid*
+*.log
+.DS_Store
