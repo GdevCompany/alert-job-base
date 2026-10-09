@@ -1,180 +1,154 @@
-## Запуск приложения для разработки
+# Запуск alert-job для разработки (Windows)
 
-### 1. Клонирование проектов
+Платформа в **нескольких git-репозиториях**. Все папки `alert-job-*` — **соседи** в одной директории (например `D:\projects\`).
 
-Откройте командную строку (cmd) и склонируйте проекты
+Монорепозиторий `alert-job` — legacy; для работы клонируйте список ниже.
 
-```bash
-git clone https://github.com/gdevby/alert-job.git
-git clone https://github.com/gdevby/alert-job-config-repo.git
+## 1. Что установить
+
+| Инструмент | Версия |
+|------------|--------|
+| JDK | **25** (`JAVA_HOME`) |
+| Maven | 3.9+ |
+| Node.js | LTS (удобно через [nvm-windows](https://github.com/coreybutler/nvm-windows/releases)) |
+| Docker Desktop | |
+| Git | |
+
+## 2. Клонирование
+
+PowerShell (пример — измените `$base`):
+
+```powershell
+$base = "D:\projects"
+$org = "https://github.com/gdevby"
+$repos = @(
+  "alert-job-base","alert-job-common","alert-job-core","alert-job-parser",
+  "alert-job-notification","alert-job-llm","alert-job-gateway","alert-job-config",
+  "alert-job-config-repo","alert-job-front","alert-job-deploy"
+)
+foreach ($r in $repos) {
+  $p = Join-Path $base $r
+  if (-not (Test-Path $p)) { git clone "$org/$r.git" $p }
+}
 ```
 
-### 2. Переменные окружения
+## 3. Сборка Java
 
-Создайте `.env` файл с переменными окружения
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-25"
 
+cd D:\projects\alert-job-base
+mvn -N install
+
+cd ..\alert-job-common
+mvn install -DskipTests -Ddocker.skip=true
+
+cd ..\alert-job-notification
+mvn package -DskipTests -Ddocker.skip=true
 ```
-cp env_sample.properties .env
-```
 
-Сгенерируйте ключ и измените переменную `APP_ENCRYPTION_KEY`
+Порядок: **base → common → сервис**.
 
-```
-openssl rand -hex 16
-```
+## 4. Frontend
 
-### 3. Установка параметра Windows Execution Policy
-
-Откройте PowerShell с правами администратора и выполните
-```bash
-Get-ExecutionPolicy
-```
-<b> Запомните значение, возвращенное этой командой. Следующей командой оно будет изменено и лучше вернуть его на прежнее значение после выполнения этого руководства. </b>
-
-Выполните следующую команду
-```bash
-Set-ExecutionPolicy -ExecutionPolicy Remotesigned
-```
-Передайте параметр А (Да для всех). <b> Верните значение этой настройки на прежнее используя команду выше, заменив параметр Remotesigned на ваше прежнее значение после выполнения этого руководства. Напоминание об этом будет в самом конце руководства.</b>
-
-### 4. Keycloak
-
-Перейдите в папку keycloak внутри папки проекта и выполните скрипт
-```bash
-cd (path_to_project)\alert-job\keycloak
-build.sh
-```
-### 5. Установка Node
-Перейдите по ссылке https://github.com/coreybutler/nvm-windows/releases и скачайте установщик nvm.
-
-Установите nvm без изменения параметров во время установки.
-
-Откройте PowerShell с правами администратора и выполните
-```bash
-nvm ls
-```
-"No installations recognized" должно быть возвращено, если вы не устанавливали nvm ранее.
-
-Тогда запустите команду для установки npm
-```bash
-nvm install lts
-```
-Проверьте версию npm и результат установки запуском еще раз следующей команды. Должна быть возвращена версия вашей установки
- ```bash
-nvm ls
-```
-Перейдите в папку проекта и перейдите в папку front (замените PATH_TO_PROJECT вашим путем). Замените YOUR_VERION_NUMBER версией npm, которая была возвращена предыдущей командой. Запустите сборку npm.
-```bash
-cd PATH_TO_PROJECT\alert-job\front
-nvm use YOUR_VERION_NUMBER
+```powershell
+cd D:\projects\alert-job-front
+copy .env.example .env
+npm ci
 npm run build
 ```
 
-### 6. Docker 
-Перейдите в родительскую директорию, создайте образы и запустите контейнеры
+Статика для nginx: `D:\projects\alert-job-front\dist`.
+
+## 5. Переменные окружения
+
+```powershell
+cd D:\projects\alert-job-deploy
+copy env_sample.properties .env
+```
+
+Ключ `APP_ENCRYPTION_KEY` (Git Bash / WSL):
+
 ```bash
-cd ..
+openssl rand -hex 16
+```
+
+## 6. Keycloak (dev)
+
+```powershell
+cd D:\projects\alert-job-deploy\keycloak
+docker build -t alert-job/alert-job-keycloak:0.1 .
+```
+
+Или Git Bash: `./build.sh`.
+
+## 7. Docker
+
+Только из **`alert-job-deploy`**:
+
+```powershell
+cd D:\projects\alert-job-deploy
+docker compose build keycloak
 docker compose up -d keycloak
 ```
 
-### 7. Config repo
+Полный стенд: `docker compose up`. Нужны соседи `alert-job-base` (config) и `alert-job-config-repo`.
 
-Существует два способа настроить конфиг:
+## 8. Config Server
 
-1. Внутри сервиса alert-job-config найдите файл application.properties в папке с ресурсами и раскомментируйте следующее
-```bash
-#spring.cloud.config.server.native.search-locations=file:///....../alert-job-config-repo 
+При запуске **config** из IDE в `alert-job-config` укажите профиль `dev,native` и путь:
+
+`spring.cloud.config.server.native.search-locations=file:///D:/projects/alert-job-config-repo`
+
+(слэши `/` в URI, как в старых конфигах проекта.)
+
+Через compose config-repo монтируется автоматически.
+
+## 9. Hosts
+
+Файл `C:\Windows\System32\drivers\etc\hosts` (от администратора):
+
 ```
-определите локальный путь к проекту конфигураций. Должно получиться примерно следующее
-```bash
-spring.cloud.config.server.native.search-locations=file:///e:/Programming/Java_EE/alert-job-config-repo/
-```
-<b> обратите внимание на тип слешей (здесь "/"), использованные в путях во всех файлах конфигурации. </b>
-
-Добавьте профиль native в том же файле в строку
-```bash
-spring.profiles.active=dev,native
-```
-Это нужно, чтобы использовать локальную конфигурацию
-
-2. Вы можете добавить переменные окружения в Running configuration вашей IDE 
-
-### 8. Hosts
-
-Перейдите по пути и откройте файл для редактирования
-```bash
-c:\Windows\System32\drivers\etc\hosts
-```
-
-Добавьте следующие строки в конец файла
-```bash
 127.0.0.1 config keycloak gateway notification parser core llm
 127.0.0.1 auth.alertjob.by alertjob.by
 ```
 
-### 9. Nginx
+Порт **80** свободен.
 
-Откройте ссылку https://nginx.org/en/download.html и скачайте Stable версию Nginx. Распакуйте в удобное место. Откройте эту папку и перейдите к файлу конфигурации.
-```bash
-(your_path)\nginx-(version)\conf\nginx.conf
+## 10. Nginx (опционально)
+
+Скачайте [nginx для Windows](https://nginx.org/en/download.html). В `conf/nginx.conf` настройте `server` с proxy на `127.0.0.1:8015`, Keycloak `8080`, для `/front/`:
+
+```nginx
+root D:/projects/alert-job-front/dist;
 ```
-Здесь вам нужно заменить конфигурацию server следующим
-```bash
-server{
-    listen 80;
-    server_name aj.by alertjob.by;
-    
-    location / {
-        proxy_pass http://127.0.0.1:8015;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location /keycloak {
-        rewrite ^/keycloak/(.*) /$1 break;
-        proxy_pass http://127.0.0.1:8080/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location /front/ {
-        rewrite ^/front/(.*) /$1 break;
-        root YOUR_PATH
-    }
-    
-    location /page {
-      try_files $uri /index.html;
-    }
-}
+
+Проверка: `nginx -t`, запуск `nginx.exe`.
+
+## 11. PowerShell Execution Policy (если нужны скрипты)
+
+Только если блокируются локальные `.ps1`:
+
+```powershell
+Get-ExecutionPolicy
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
-Замените YOUR_PATH путем к папке front/dist проекта. Должно выглядеть примерно так
-```bash 
-root e:/Programming/Java_EE/alert-job/front/dist; 
-```
-<b> Пробелов не должно быть в строке пути и следите за использованным типом слешей (тут"/"). </b> Сохраните изменения и закройте файл. Откройте командную строку в папке nginx и выполните следующее
-```bash 
-cd (your_path)\nginx-(version)
-nginx -t
-```
-"nginx.conf syntax is ok" и "test is successful" сообщения должны быть возвращены. 
 
-Далее, запустите файл nginx.exe. Скорее всего, вам потребуется исполнять этот файл для запуска проекта после каждой перезагрузки компьютера.
+Верните прежнее значение после настройки, если требует политика компании.
 
-### 10. Запуск проекта
-Запустите сервисы проекта используя вашу IDE в следующем порядке:
-1. config 
-2. gateway 
-3. parser 
-4. core 
-5. notification 
-6. llm 
+## 12. Запуск из IntelliJ IDEA
 
-После этого, проект доступен по [alertjob.by](http://alertjob.by/). Если все в порядке, тогда вы можете вернуться к шагу №2 и изменить ExecutionPolicy к вашему прежнему значению.
+1. SDK **25**; `mvn -N install` в `alert-job-base`, затем `alert-job-common`.
+2. Откройте сервис или `alert-job-base.code-workspace`.
+3. Порядок запуска: **config → gateway → parser → core → notification → llm**.
 
-### 11. Тестовый аккаунт
-* Логин: test
-* Пароль: test
+Сайт: [http://alertjob.by](http://alertjob.by)
+
+## 13. Тестовый аккаунт
+
+- Логин: `test`  
+- Пароль: `test`
+
+## 14. Артефакты сборки
+
+Не коммитьте `node_modules`, `target`, `dist` — они в `.gitignore` каждого репозитория.

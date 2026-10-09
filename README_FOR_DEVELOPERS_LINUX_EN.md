@@ -1,152 +1,129 @@
-## Launching app for development
+# Running alert-job for development (Linux)
 
-### 1. Clone the projects
+The platform is split into **multiple git repositories**. All `alert-job-*` folders must be **siblings** under one parent directory (e.g. `~/projects/`).
 
-Open terminal and clone the projects
+The legacy monorepo `alert-job` on GitHub is deprecated for day-to-day work; clone the repos below.
+
+## 1. Prerequisites
+
+| Tool | Version |
+|------|---------|
+| JDK | **25** (`JAVA_HOME`) |
+| Maven | 3.9+ |
+| Node.js + npm | LTS |
+| Docker | Keycloak and full stack |
+| Git | |
+
+## 2. Clone repositories
 
 ```bash
-git clone https://github.com/gdevby/alert-job.git
-git clone https://github.com/gdevby/alert-job-config-repo.git
+mkdir -p ~/projects && cd ~/projects
+ORG=https://github.com/gdevby
+for r in alert-job-base alert-job-common alert-job-core alert-job-parser \
+  alert-job-notification alert-job-llm alert-job-gateway alert-job-config \
+  alert-job-config-repo alert-job-front alert-job-deploy; do
+  git clone "$ORG/$r.git" "$r"
+done
 ```
 
-### 2. Environment variables
+| Repository | Role |
+|------------|------|
+| `alert-job-base` | Maven parent (`pom.xml`), `config/`, docs |
+| `alert-job-common` | shared Java library |
+| `alert-job-*` services | microservices |
+| `alert-job-front` | React (Vite) |
+| `alert-job-deploy` | **docker-compose**, dev Keycloak image |
+| `alert-job-config-repo` | Spring Cloud Config files |
 
-Create a `.env` file with environment variables
+## 3. Build Java (before IDE)
 
-```
-cp env_sample.properties .env
-```
-
-Generate the key and changing the `APP_ENCRYPTION_KEY` variable
-
-```
-openssl rand -hex 16
-```
-
-### 3. Keycloak
-
-Enter project folder and after that enter keycloak folder
 ```bash
-cd alert-job
-cd keycloak
-./build.sh
+export JAVA_HOME=/path/to/jdk-25
+
+cd ~/projects/alert-job-base
+mvn -N install
+
+cd ../alert-job-common
+mvn install -DskipTests -Ddocker.skip=true
+
+cd ../alert-job-notification
+mvn package -DskipTests -Ddocker.skip=true
 ```
 
-### 4. Node installing
+Order: **base → common → service**.
 
-Go to parent directory and after that enter front folder, and run next commands
+## 4. Frontend
+
 ```bash
-cd ..
-cd front
-sudo apt install npm
-npm i
+cd ~/projects/alert-job-front
+cp .env.example .env
+npm ci
 npm run build
 ```
 
-### 5. Docker 
+Nginx static root: `~/projects/alert-job-front/dist`.
 
-Go to parent directory, create images and run containers 
+## 5. Environment variables
+
 ```bash
-cd ..
-docker compose up -d keycloak
-sudo chmod 777 public
+cd ~/projects/alert-job-deploy
+cp env_sample.properties .env
+openssl rand -hex 16   # set APP_ENCRYPTION_KEY in .env
 ```
 
-### 6. Config repo
+## 6. Keycloak (dev)
 
-There are two ways wo setup config:
-1) In config module, in resource folder in `application.properties` file uncomment `#spring.cloud.config.server.native.search-locations=file:///....../alert-job-config-repo` specify the local path to the config project.
-Should look like this:
-`spring.cloud.config.server.native.search-locations=/home/username/IdeaProjects/alert-job-config-repo`. 
-Add `native` profile to the `spring.profiles.active=dev`. This is needed to use local configuration
-2) You may add Environment Variables in Running configuration in your IDE.
-
-### 7. Hosts
-
-Then open terminal and alter hosts file
 ```bash
-sudo nano /etc/hosts
+cd ~/projects/alert-job-deploy/keycloak
+chmod +x build.sh && ./build.sh
+```
 
-add next lines
+## 7. Docker
+
+Run compose **only** from `alert-job-deploy`:
+
+```bash
+cd ~/projects/alert-job-deploy
+docker compose build keycloak
+docker compose up -d keycloak
+```
+
+Full stack: `docker compose up` (requires images from `rg.gdev.by` or local CI builds).  
+Mounts: `../alert-job-base/config`, `../alert-job-config-repo`.
+
+## 8. Config Server
+
+**Option A — Docker compose** (recommended): `alert-job-config-repo` is already mounted.
+
+**Option B — config from IDE:** in `alert-job-config`, set `spring.profiles.active=dev,native` and  
+`spring.cloud.config.server.native.search-locations=file:///home/USER/projects/alert-job-config-repo`.
+
+## 9. Hosts file
+
+```
 127.0.0.1 config keycloak gateway notification parser core llm
 127.0.0.1 auth.alertjob.by alertjob.by
 ```
 
-### 8. Nginx
+Port **80** must be free.
 
-Downloading nginx
-```bash
-sudo apt install nginx
-```
+## 10. Nginx
 
-Configure nginx config
-```bash
-sudo nano /etc/nginx/sites-enabled/aj.conf
-```
+Install nginx, add a server block proxying `/` → `127.0.0.1:8015`, `/keycloak` → `8080`, `/front/` → `alert-job-front/dist` (see Russian doc for full sample `aj.conf`).
 
-Then adding next configuration (do no forget to change in location /front/ field root on your local path)
-```bash
-server{
-    listen 80;
-    server_name aj.by alertjob.by;
-    
-    location / {
-        proxy_pass http://127.0.0.1:8015;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location /keycloak {
-        rewrite ^/keycloak/(.*) /$1 break;
-        proxy_pass http://127.0.0.1:8080/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location /front/ {
-        rewrite ^/front/(.*) /$1 break;
-        root /home/username/IdeaProjects/alert-job/front/dist;
-    }
-    
-    location /page {
-      try_files $uri /index.html;
-    }
-}
-```
+## 11. Run from IDE (IntelliJ IDEA)
 
-Restart nginx and check if it's working
-```bash
-sudo systemctl restart nginx.service
-sudo systemctl status nginx.service
+1. JDK **25**; `mvn -N install` in `alert-job-base`, then build `alert-job-common`.
+2. Open a service repo or `alert-job-base.code-workspace`.
+3. Start services in order: **config → gateway → parser → core → notification → llm**.
 
-status should be active (running)
+Open [http://alertjob.by](http://alertjob.by).
 
- nginx.service - A high performance web server and a reverse proxy server
-     Loaded: loaded (/lib/systemd/system/nginx.service; enabled; vendor preset:>
-     Active: active (running) since Fri 2024-10-25 08:04:09 +03; 2h 3min ago
-```
+## 12. Test account
 
-Then adding user www-data to yours group
-```bash
-sudo usermod -aG $USER www-data 
-```
+- Login: `test`  
+- Password: `test`
 
-### 9. Run project
+## 13. Build artifacts
 
-Run project services using your IDE in next order: 
-1. config 
-2. gateway 
-3. parser 
-4. core 
-5. notification 
-6. llm 
-
-After that project available on [alertjob.by](http://alertjob.by/)
-
-### 10. Test account
-* Login: test
-* Password: test
+Do not commit `node_modules`, `target`, or `dist` (see `.gitignore` in each repo).

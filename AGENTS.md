@@ -1,15 +1,15 @@
 # AGENTS.md — alert-job-base
 
-**Meta + Maven parent** для мультирепо alert-job. Имя GitHub: **`alert-job-base`** (монорепо legacy: **`alert-job`**).
+**Meta + Maven parent** для мультирепо alert-job. GitHub: **`alert-job-base`**. Соседние клоны `alert-job-*` — в одной папке на диске. Монорепо legacy: **`alert-job`**.
 
 ## Содержимое
 
 | Что | Где |
 |-----|-----|
-| Parent POM (`alert-job-base`) | `pom.xml` → `mvn -N install` |
+| Parent POM (`alert-job-parent`) | `pom.xml` → `mvn -N install` |
 | Инфра-конфиг для Docker | `config/` (монтируется из `alert-job-deploy` compose) |
 | Документация продукта | `README*.md` |
-| Обзор всех репо | `REPOS.md`, `MULTIREPO-LAYOUT.md`, workspace |
+| Обзор всех репо | `REPOS.md`, `README_FOR_DEVELOPERS_*`, workspace |
 
 **Docker compose здесь нет** — только `alert-job-deploy`.
 
@@ -27,4 +27,4 @@
 2. `alert-job-common`: `mvn install -DskipTests`
 3. Сервисы: `mvn package`
 
-Клоны: `clone-all.ps1.example`. Артефакты сборки (`node_modules`, `target`, `dist`) в git не входят — после проверки сборки: `scripts/clean-artifacts.ps1`.
+Клоны и запуск: `README_FOR_DEVELOPERS_*`, `REPOS.md`. В git не коммитить `node_modules`, `target`, `dist` (см. `.gitignore` в каждом репо).

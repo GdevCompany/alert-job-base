@@ -1,102 +1,142 @@
-### Запуск приложения для разработки
+# Запуск alert-job для разработки (Linux)
 
-### 1. Клонирование проектов
+Платформа разбита на **несколько git-репозиториев**. Все каталоги `alert-job-*` должны лежать **рядом** в одной родительской папке (например `~/projects/`).
 
-Откройте терминал и склонируйте проекты
+Монорепозиторий `alert-job` на GitHub — legacy; для новой схемы клонируйте репозитории ниже.
+
+## 1. Что установить
+
+| Инструмент | Версия |
+|------------|--------|
+| JDK | **25** (`JAVA_HOME`) |
+| Maven | 3.9+ |
+| Node.js + npm | LTS |
+| Docker | для Keycloak и полного стенда |
+| Git | |
+
+## 2. Клонирование
 
 ```bash
-git clone https://github.com/gdevby/alert-job.git
-git clone https://github.com/gdevby/alert-job-config-repo.git
+mkdir -p ~/projects && cd ~/projects
+ORG=https://github.com/gdevby
+for r in alert-job-base alert-job-common alert-job-core alert-job-parser \
+  alert-job-notification alert-job-llm alert-job-gateway alert-job-config \
+  alert-job-config-repo alert-job-front alert-job-deploy; do
+  git clone "$ORG/$r.git" "$r"
+done
 ```
 
-### 2. Переменные окружения
+| Репозиторий | Назначение |
+|-------------|------------|
+| `alert-job-base` | Maven parent (`pom.xml`), `config/`, документация |
+| `alert-job-common` | общая Java-библиотека |
+| `alert-job-*` (core, parser, …) | микросервисы |
+| `alert-job-front` | React (Vite) |
+| `alert-job-deploy` | **docker-compose**, Keycloak dev-образ |
+| `alert-job-config-repo` | файлы Spring Cloud Config |
 
-Создайте `.env` файл с переменными окружения
+## 3. Сборка Java (перед IDE или отладкой)
 
+```bash
+export JAVA_HOME=/path/to/jdk-25
+
+cd ~/projects/alert-job-base
+mvn -N install
+
+cd ../alert-job-common
+mvn install -DskipTests -Ddocker.skip=true
+
+# при необходимости один сервис:
+cd ../alert-job-notification
+mvn package -DskipTests -Ddocker.skip=true
 ```
+
+Порядок всегда: **base → common → сервис**.
+
+## 4. Frontend
+
+```bash
+cd ~/projects/alert-job-front
+cp .env.example .env    # при необходимости
+npm ci
+npm run build           # каталог dist/ — не коммитить в git
+```
+
+Путь к статике для nginx: `~/projects/alert-job-front/dist`.
+
+## 5. Переменные окружения (Docker / сервисы)
+
+```bash
+cd ~/projects/alert-job-deploy
 cp env_sample.properties .env
 ```
 
-Сгенерируйте ключ и измените переменную `APP_ENCRYPTION_KEY`
-
-```
-openssl rand -hex 16
-```
-
-### 3. Keycloak
-
-Перейдите в папку проекта, затем в папку keycloak и запустите скрипт
+Сгенерируйте ключ шифрования и пропишите в `.env`:
 
 ```bash
-cd alert-job
-cd keycloak
+openssl rand -hex 16   # → APP_ENCRYPTION_KEY
+```
+
+## 6. Keycloak (dev)
+
+```bash
+cd ~/projects/alert-job-deploy/keycloak
+chmod +x build.sh
 ./build.sh
 ```
 
-### 4. Установка Node
+## 7. Docker (минимум для dev)
 
-Перейдите в корневую директорию, а затем в папку front и запустите следующие команды
-
-```bash
-cd ..
-cd front
-sudo apt install npm
-npm i
-npm run build
-```
-
-### 5. Docker 
-
-Перейдите в корневую директорию и запустите следующие команды
+Compose запускается **только** из `alert-job-deploy` (не из base).
 
 ```bash
-cd ..
+cd ~/projects/alert-job-deploy
+docker compose build keycloak
 docker compose up -d keycloak
-sudo chmod 777 public
 ```
 
-### 6. Config repo
+Полный стенд (все контейнеры): `docker compose up` — нужны образы `rg.gdev.by/alert-job/*` (pull из registry или сборка в CI).
 
-Есть два способа настроить конфиг
-1) В модуле config в папке resources в файле application.properties раскоментировать `#spring.cloud.config.server.native.search-locations=file:///....../alert-job-config-repo` и указать в ней локальный путь до проекта с конфигурацией.
-Должно выглядеть примерно так:
-`spring.cloud.config.server.native.search-locations=/home/username/IdeaProjects/alert-job-config-repo`. Добавить к `spring.profiles.active=dev` профиль `native`. Это нужно для того, чтобы не пушить конфиг на гитхаб, а использовать локальный. 
-2) Либо можно указать эти параметры в переменных окружения в IDE
+Volumes: `../alert-job-base/config`, `../alert-job-config-repo`.
 
-### 7. Hosts
+## 8. Config Server и config-repo
 
-Далее открываем терминал и вводим
+**Вариант A — через Docker compose** (рекомендуется): в `docker-compose.yml` уже смонтирован `../alert-job-config-repo`.
+
+**Вариант B — сервис config из IDE:** в `alert-job-config` в `application.properties` (или env):
+
+- `spring.profiles.active=dev,native`
+- `spring.cloud.config.server.native.search-locations=file:///home/USER/projects/alert-job-config-repo`
+
+## 9. Файл hosts
 
 ```bash
 sudo nano /etc/hosts
-
-и добавляем строки
-127.0.0.1 config keycloak gateway notification parser core llm
-127.0.0.1 auth.alertjob.by alertjob.by
-
 ```
 
-### 8. Nginx
+Добавьте:
 
-Устанавливаем nginx
+```
+127.0.0.1 config keycloak gateway notification parser core llm
+127.0.0.1 auth.alertjob.by alertjob.by
+```
+
+Для gateway иногда нужен IP LAN вместо 127.0.0.1 — см. общий README; порт **80** должен быть свободен.
+
+## 10. Nginx (прокси к gateway и Keycloak)
 
 ```bash
 sudo apt install nginx
-```
-
-Изменяем настройки nginx
-
-```bash
 sudo nano /etc/nginx/sites-enabled/aj.conf
 ```
 
-Добавляем следующее в настройки (не забудьте изменить в location /front/ поле root на путь к вашему проекту)
+Пример (замените путь к `dist`):
 
-```bash
-server{
+```nginx
+server {
     listen 80;
     server_name aj.by alertjob.by;
-    
+
     location / {
         proxy_pass http://127.0.0.1:8015;
         proxy_set_header Host $host;
@@ -104,7 +144,7 @@ server{
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Real-IP $remote_addr;
     }
-    
+
     location /keycloak {
         rewrite ^/keycloak/(.*) /$1 break;
         proxy_pass http://127.0.0.1:8080/;
@@ -113,49 +153,42 @@ server{
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Real-IP $remote_addr;
     }
-    
+
     location /front/ {
         rewrite ^/front/(.*) /$1 break;
-        root /home/dima/IdeaProjects/alert-job/front/dist;
+        root /home/USER/projects/alert-job-front/dist;
     }
-    
+
     location /page {
-      try_files $uri /index.html;
+        try_files $uri /index.html;
     }
 }
 ```
 
-Перезапускаем nginx и проверяем его работу
-
 ```bash
-sudo systemctl restart nginx.service
-sudo systemctl status nginx.service
-
-статус должен быть active (running)
-
- nginx.service - A high performance web server and a reverse proxy server
-     Loaded: loaded (/lib/systemd/system/nginx.service; enabled; vendor preset:>
-     Active: active (running) since Fri 2024-10-25 08:04:09 +03; 2h 3min ago
+sudo systemctl restart nginx
+sudo usermod -aG $USER www-data
 ```
 
-Далее добавляем пользователя www-data в вашу группу
+## 11. Запуск из IDE (IntelliJ IDEA)
 
-```bash
-sudo usermod -aG $USER www-data 
-```
+1. JDK **25**, Maven: `mvn -N install` в `alert-job-base`, затем `alert-job-common`.
+2. Откройте репозиторий сервиса или workspace `alert-job-base/alert-job-base.code-workspace`.
+3. Запустите микросервисы **в порядке**:
+   1. config  
+   2. gateway  
+   3. parser  
+   4. core  
+   5. notification  
+   6. llm  
 
-### 9. Запуск проекта
+Сайт: [http://alertjob.by](http://alertjob.by)
 
-Запустите сервисы проекта используя вашу IDE в следующем порядке:
-1. config 
-2. gateway 
-3. parser 
-4. core 
-5. notification 
-6. llm 
+## 12. Тестовый аккаунт
 
-Заходим в браузер и пишем [alertjob.by](http://alertjob.by/)
+- Логин: `test`  
+- Пароль: `test`
 
-### 10. Тестовый аккаунт
-* Логин: test
-* Пароль: test
+## 13. Артефакты сборки
+
+`node_modules`, `target`, `dist` в git не коммитятся (`.gitignore`). Удалить вручную или `mvn clean` / удалить папки после проверки сборки.
